@@ -1,125 +1,182 @@
 #define _POSIX_C_SOURCE 200809L
 
-
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 
 #include "../include/kmeans.h"
 
-static double get_time_seconds(void)
+int kmeans_static(
+    const Dataset *, Centroids *,
+    const KMeansConfig *, size_t
+);
+
+#define DIMENSIONS 2
+#define CLUSTERS 3
+#define REPEATS 3
+
+static const size_t dataset_sizes[] = {
+    10000, 100000, 500000, 1000000
+};
+
+static const size_t thread_counts[] = {1, 2, 4, 8};
+
+static double seconds(void)
 {
     struct timespec ts;
-
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
     return (double)ts.tv_sec +
-           (double)ts.tv_nsec / 1000000000.0;
+           (double)ts.tv_nsec / 1e9;
 }
 
-static void generate_dataset(
-    double *points,
-    size_t n_points,
-    size_t dimensions
+static void initialize_centers(
+    double *centers, const double *points, size_t k
 )
 {
-    for (size_t i = 0; i < n_points; i++) {
-        for (size_t d = 0; d < dimensions; d++) {
-            points[i * dimensions + d] =
-                (double)(rand() % 10000) / 100.0;
-        }
+    for (size_t i = 0; i < k * DIMENSIONS; i++)
+        centers[i] = points[i];
+}
+
+static int same_centers(
+    const double *a, const double *b, size_t count
+)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (fabs(a[i] - b[i]) > 1e-6)
+            return 0;
     }
+    return 1;
 }
 
 int main(void)
 {
-    const size_t n_points = 10000;
-    const size_t dimensions = 2;
-    const size_t k = 3;
+    FILE *csv = fopen("benchmarks/results/results.csv", "w");
 
-    double *points =
-        malloc(n_points * dimensions * sizeof(double));
-
-    double *centers =
-        malloc(k * dimensions * sizeof(double));
-
-    if (!points || !centers) {
-        fprintf(stderr, "Memory allocation failed.\n");
-
-        free(points);
-        free(centers);
-
+    if (!csv) {
+        perror("Cannot open results CSV");
         return 1;
     }
+
+    fprintf(csv,
+        "dataset_size,threads,repeat,sequential_seconds,"
+        "static_seconds,speedup,centroids_match\n");
 
     srand(42);
 
-    generate_dataset(
-        points,
-        n_points,
-        dimensions
-    );
+    size_t size_count =
+        sizeof(dataset_sizes) / sizeof(dataset_sizes[0]);
 
-    /*
-     * Use the first k points as initial centroids.
-     */
-    for (size_t c = 0; c < k; c++) {
-        for (size_t d = 0; d < dimensions; d++) {
-            centers[c * dimensions + d] =
-                points[c * dimensions + d];
+    size_t thread_count =
+        sizeof(thread_counts) / sizeof(thread_counts[0]);
+
+    for (size_t s = 0; s < size_count; s++) {
+        size_t n = dataset_sizes[s];
+
+        double *points = malloc(n * DIMENSIONS * sizeof(double));
+        double *initial = malloc(CLUSTERS * DIMENSIONS * sizeof(double));
+        double *seq_centers = malloc(CLUSTERS * DIMENSIONS * sizeof(double));
+        double *par_centers = malloc(CLUSTERS * DIMENSIONS * sizeof(double));
+
+        if (!points || !initial || !seq_centers || !par_centers) {
+            fprintf(stderr, "Allocation failed for %zu points\n", n);
+            free(points);
+            free(initial);
+            free(seq_centers);
+            free(par_centers);
+            fclose(csv);
+            return 1;
         }
-    }
 
-    Dataset dataset = {
-        .points = points,
-        .n_points = n_points,
-        .dimensions = dimensions
-    };
+        for (size_t i = 0; i < n * DIMENSIONS; i++)
+            points[i] = (double)(rand() % 10000) / 100.0;
 
-    Centroids centroids = {
-        .centers = centers,
-        .k = k,
-        .dimensions = dimensions
-    };
+        initialize_centers(initial, points, CLUSTERS);
 
-    KMeansConfig config = {
-        .max_iterations = 100,
-        .tolerance = 0.0001
-    };
+        Dataset dataset = {points, n, DIMENSIONS};
+        KMeansConfig config = {100, 0.0001};
 
-    double start = get_time_seconds();
+        for (size_t t = 0; t < thread_count; t++) {
+            size_t threads = thread_counts[t];
 
-    int result = kmeans_sequential(
-        &dataset,
-        &centroids,
-        &config
-    );
+            for (int repeat = 1; repeat <= REPEATS; repeat++) {
+                initialize_centers(seq_centers, initial, CLUSTERS);
+                initialize_centers(par_centers, initial, CLUSTERS);
 
-    double end = get_time_seconds();
+                Centroids sequential = {
+                    seq_centers, CLUSTERS, DIMENSIONS
+                };
+                Centroids parallel = {
+                    par_centers, CLUSTERS, DIMENSIONS
+                };
 
-    if (result != 0) {
-        fprintf(stderr, "K-Means failed.\n");
+                double start = seconds();
+                int seq_ok = kmeans_sequential(
+                    &dataset, &sequential, &config
+                );
+                double seq_time = seconds() - start;
+
+                start = seconds();
+                int par_ok = kmeans_static(
+                    &dataset, &parallel, &config, threads
+                );
+                double par_time = seconds() - start;
+
+                if (seq_ok != 0 || par_ok != 0) {
+                    fprintf(stderr, "K-Means failed\n");
+                    free(points);
+                    free(initial);
+                    free(seq_centers);
+                    free(par_centers);
+                    fclose(csv);
+                    return 1;
+                }
+
+                int match = same_centers(
+                    seq_centers, par_centers,
+                    CLUSTERS * DIMENSIONS
+                );
+
+                double speedup = par_time > 0.0
+                    ? seq_time / par_time : 0.0;
+
+                printf(
+                    "N=%zu threads=%zu repeat=%d "
+                    "seq=%.6f static=%.6f speedup=%.3fx match=%s\n",
+                    n, threads, repeat, seq_time, par_time,
+                    speedup, match ? "YES" : "NO"
+                );
+
+                fprintf(csv, "%zu,%zu,%d,%.9f,%.9f,%.6f,%d\n",
+                    n, threads, repeat, seq_time, par_time,
+                    speedup, match);
+
+                fflush(csv);
+
+                if (!match) {
+                    fprintf(stderr,
+                        "Centroid mismatch: N=%zu threads=%zu\n",
+                        n, threads);
+                    free(points);
+                    free(initial);
+                    free(seq_centers);
+                    free(par_centers);
+                    fclose(csv);
+                    return 1;
+                }
+            }
+        }
 
         free(points);
-        free(centers);
-
-        return 1;
+        free(initial);
+        free(seq_centers);
+        free(par_centers);
     }
 
-    printf("========================================\n");
-    printf("        K-Means Benchmark\n");
-    printf("========================================\n");
-    printf("Dataset size : %zu points\n", n_points);
-    printf("Dimensions   : %zu\n", dimensions);
-    printf("Clusters     : %zu\n", k);
-    printf("Execution    : %.6f seconds\n", end - start);
-    printf("========================================\n");
-
-    free(points);
-    free(centers);
+    fclose(csv);
+    printf("\nResults saved to benchmarks/results/results.csv\n");
 
     return 0;
 }
+

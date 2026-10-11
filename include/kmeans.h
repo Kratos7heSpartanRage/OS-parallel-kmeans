@@ -25,5 +25,16 @@ int kmeans_sequential(
     Centroids *centroids,
     const KMeansConfig *config
 );
-
+int kmeans_static(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config,
+    size_t num_threads
+);
+int kmeans_naive(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config,
+    size_t num_threads
+);
 #endif
