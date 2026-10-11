@@ -1,18 +1,64 @@
 /**
  * @file kmeans.h
- * @brief Integration contract for Person 4: Parallel K-Means Engine.
+ * @brief K-Means Clustering API: Sequential, Naive MT, Static MT, and Parallel Thread-Pool Engine.
  */
 
 #ifndef KMEANS_H
 #define KMEANS_H
 
-#include "thread_pool.h"
-#include "accumulator.h"
 #include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ========================================================================= */
+/* Person 4: Dataset, Centroids, and Baseline Implementations                */
+/* ========================================================================= */
+
+typedef struct {
+    double *points;
+    size_t n_points;
+    size_t dimensions;
+} Dataset;
+
+typedef struct {
+    double *centers;
+    size_t k;
+    size_t dimensions;
+} Centroids;
+
+typedef struct {
+    size_t max_iterations;
+    double tolerance;
+} KMeansConfig;
+
+int kmeans_sequential(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config
+);
+
+int kmeans_static(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config,
+    size_t num_threads
+);
+
+int kmeans_naive(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config,
+    size_t num_threads
+);
+
+/* ========================================================================= */
+/* Parallel Dynamic Thread Pool Integration Contract                         */
+/* ========================================================================= */
+
+#include "thread_pool.h"
+#include "accumulator.h"
 
 /**
  * @brief Shared context passed via Task.ctx into the worker thread callback.

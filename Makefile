@@ -1,4 +1,3 @@
-
 # Makefile for High-Performance Multi-Threaded Parallel K-Means
 # Compiler configuration
 CC ?= gcc
@@ -12,19 +11,23 @@ OBJ_DIR = obj
 BIN_DIR = bin
 TEST_DIR = tests
 
-# Sources & Objects for Person 1
+# Sources & Objects for Person 1 (Thread Pool & Dynamic Scheduler)
 PERSON1_SRCS = $(SRC_DIR)/task_queue.c $(SRC_DIR)/thread_pool.c
 PERSON1_OBJS = $(OBJ_DIR)/task_queue.o $(OBJ_DIR)/thread_pool.o
 
-# Sources & Objects for Person 2
+# Sources & Objects for Person 2 (Cache Optimization & Memory Architecture)
 PERSON2_SRCS = $(SRC_DIR)/aligned_memory.c $(SRC_DIR)/accumulator.c
 PERSON2_OBJS = $(OBJ_DIR)/aligned_memory.o $(OBJ_DIR)/accumulator.o
 
-# Sources & Objects for Person 3
+# Sources & Objects for Person 3 (Synchronization & Barrier)
 PERSON3_SRCS = $(SRC_DIR)/synchronization.c
 PERSON3_OBJS = $(OBJ_DIR)/synchronization.o
 
-all: test_person1 test_person3
+# Sources & Objects for Person 4 (K-Means Engine & Benchmarks)
+PERSON4_SRCS = $(SRC_DIR)/kmeans.c $(SRC_DIR)/naive_kmeans.c $(SRC_DIR)/static_kmeans.c
+PERSON4_OBJS = $(OBJ_DIR)/kmeans.o $(OBJ_DIR)/naive_kmeans.o $(OBJ_DIR)/static_kmeans.o
+
+all: test_person1 test_person3 test_naive test_static
 
 $(OBJ_DIR):
 	mkdir -p $(OBJ_DIR)
@@ -35,12 +38,20 @@ $(BIN_DIR):
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) -c $< -o $@
 
+# Unit Tests
 test_person1: $(PERSON1_OBJS) $(TEST_DIR)/test_thread_pool.c | $(BIN_DIR)
 	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) $(TEST_DIR)/test_thread_pool.c $(PERSON1_OBJS) -o $(BIN_DIR)/test_thread_pool.exe
 
 test_person3: $(PERSON2_OBJS) $(PERSON3_OBJS) $(TEST_DIR)/test_synchronization.c | $(BIN_DIR)
 	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) $(TEST_DIR)/test_synchronization.c $(PERSON2_OBJS) $(PERSON3_OBJS) -o $(BIN_DIR)/test_synchronization.exe -lm
 
+test_naive: $(PERSON4_OBJS) test_naive.c | $(BIN_DIR)
+	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) test_naive.c $(PERSON4_OBJS) -o $(BIN_DIR)/test_naive.exe -lm
+
+test_static: $(PERSON4_OBJS) test_static.c | $(BIN_DIR)
+	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) test_static.c $(PERSON4_OBJS) -o $(BIN_DIR)/test_static.exe -lm
+
+# Benchmarks
 benchmark_scheduler: $(PERSON1_OBJS) benchmarks/benchmark_scheduler.c | $(BIN_DIR)
 	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) benchmarks/benchmark_scheduler.c $(PERSON1_OBJS) -o $(BIN_DIR)/benchmark_scheduler.exe
 
@@ -53,11 +64,19 @@ benchmark_false_sharing: $(PERSON2_OBJS) benchmarks/false_sharing_benchmark.c | 
 hard_comparison_benchmark: $(PERSON1_OBJS) benchmarks/hard_comparison_benchmark.c | $(BIN_DIR)
 	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) benchmarks/hard_comparison_benchmark.c $(PERSON1_OBJS) -o $(BIN_DIR)/hard_comparison_benchmark.exe -lm
 
-test: test_person1 test_person3
+benchmark_suite: $(PERSON4_OBJS) benchmarks/benchmark_suite.c | $(BIN_DIR)
+	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) benchmarks/benchmark_suite.c $(PERSON4_OBJS) -o $(BIN_DIR)/benchmark_suite.exe -lm
+
+benchmark_person4: $(PERSON4_OBJS) benchmarks/benchmark.c | $(BIN_DIR)
+	$(CC) $(CFLAGS) $(PTHREAD_FLAGS) benchmarks/benchmark.c $(PERSON4_OBJS) -o $(BIN_DIR)/benchmark_person4.exe -lm
+
+test: test_person1 test_person3 test_naive test_static
 	./$(BIN_DIR)/test_thread_pool.exe
 	./$(BIN_DIR)/test_synchronization.exe
+	./$(BIN_DIR)/test_naive.exe
+	./$(BIN_DIR)/test_static.exe
 
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
-.PHONY: all clean test test_person1 test_person3 benchmark_scheduler benchmark_synchronization benchmark_false_sharing hard_comparison_benchmark
+.PHONY: all clean test test_person1 test_person3 test_naive test_static benchmark_scheduler benchmark_synchronization benchmark_false_sharing hard_comparison_benchmark benchmark_suite benchmark_person4
