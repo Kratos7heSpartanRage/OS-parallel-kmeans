@@ -30,3 +30,8 @@ datasets/*.txt
 .idea/
 .DS_Store
 Thumbs.db
+*.log
+
+# Personal Technical Reports
+PERSON3_TECHNICAL_REPORT.md
+*technical_report*.md
