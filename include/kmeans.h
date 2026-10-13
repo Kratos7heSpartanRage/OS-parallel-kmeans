@@ -1,6 +1,6 @@
 /**
  * @file kmeans.h
- * @brief Integration contract for Parallel & Adaptive K-Means Engine.
+ * @brief High-performance Parallel, Sequential, and Adaptive K-Means Clustering Engine.
  *
  * Implements high-performance clustering with dynamic task distribution,
  * cache-aligned local accumulation, and adaptive sequential cut-off
@@ -10,14 +10,60 @@
 #ifndef KMEANS_H
 #define KMEANS_H
 
-#include "thread_pool.h"
-#include "accumulator.h"
 #include <stddef.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ========================================================================= */
+/* Dataset, Centroids, and Baseline Implementations                          */
+/* ========================================================================= */
+
+typedef struct {
+    double *points;
+    size_t n_points;
+    size_t dimensions;
+} Dataset;
+
+typedef struct {
+    double *centers;
+    size_t k;
+    size_t dimensions;
+} Centroids;
+
+typedef struct {
+    size_t max_iterations;
+    double tolerance;
+} KMeansConfig;
+
+int kmeans_sequential(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config
+);
+
+int kmeans_static(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config,
+    size_t num_threads
+);
+
+int kmeans_naive(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config,
+    size_t num_threads
+);
+
+/* ========================================================================= */
+/* Parallel Dynamic Thread Pool Integration Contract                         */
+/* ========================================================================= */
+
+#include "thread_pool.h"
+#include "accumulator.h"
 
 /**
  * @brief Default empirical threshold below which parallel overhead
@@ -54,16 +100,6 @@ void kmeans_assign_chunk_fn(const Task *task, int tid, void *ctx);
  *
  * Runs on the calling thread with zero multi-threading overhead
  * (no mutexes, no condition variables, no task queue, single accumulator).
- *
- * @param points Array of N * D data points.
- * @param n Number of data points.
- * @param d Dimensions.
- * @param k Number of clusters.
- * @param max_iters Maximum iterations.
- * @param tolerance Convergence tolerance.
- * @param out_centroids Output array of K * D centroids.
- * @param out_assignments Output array of N cluster labels (can be NULL).
- * @return int Number of iterations until convergence.
  */
 int kmeans_sequential_run(
     const double *points,
@@ -80,18 +116,6 @@ int kmeans_sequential_run(
  * @brief Parallel K-Means execution driver using Thread Pool & Dynamic Task Queue.
  *
  * Forces multi-threaded execution across P worker threads.
- *
- * @param points Array of N * D data points.
- * @param n Number of data points.
- * @param d Dimensions.
- * @param k Number of clusters.
- * @param max_iters Maximum iterations.
- * @param tolerance Convergence tolerance.
- * @param nthreads Worker thread count P.
- * @param chunk_size Points per dynamic task chunk (0 for default).
- * @param out_centroids Output array of K * D centroids.
- * @param out_assignments Output array of N cluster labels (can be NULL).
- * @return int Number of iterations until convergence.
  */
 int kmeans_parallel_run(
     const double *points,
@@ -113,18 +137,6 @@ int kmeans_parallel_run(
  * If N < threshold or nthreads <= 1, automatically routes execution to
  * sequential execution, bypassing thread synchronization penalties.
  * If N >= threshold, routes execution to the multi-threaded parallel engine.
- *
- * @param points Array of N * D data points.
- * @param n Number of data points.
- * @param d Dimensions.
- * @param k Number of clusters.
- * @param max_iters Maximum iterations.
- * @param tolerance Convergence tolerance.
- * @param nthreads Worker thread count P.
- * @param chunk_size Points per dynamic task chunk.
- * @param out_centroids Output array of K * D centroids.
- * @param out_assignments Output array of N cluster labels (can be NULL).
- * @return int Number of iterations until convergence.
  */
 int kmeans_adaptive_run(
     const double *points,
@@ -151,10 +163,6 @@ void kmeans_set_parallel_threshold(size_t threshold);
 
 /**
  * @brief Evaluates whether parallelization is beneficial for the given workload.
- *
- * @param n Number of data points.
- * @param nthreads Number of threads.
- * @return true if parallel computing is expected to be faster than sequential.
  */
 bool kmeans_is_parallel_beneficial(size_t n, int nthreads);
 

@@ -1,5 +1,7 @@
 # Word Document Plans
 *.docx
+High_Performance_Multi_Threaded_Clustering_Project_Plan.docx
+Thread_Pool_Dynamic_Scheduling_Module_Plan.docx
 
 # Build artifacts & Binaries
 *.o
@@ -34,6 +36,7 @@ datasets/*.txt
 .idea/
 .DS_Store
 Thumbs.db
+*.log
 
 # Zone.Identifier files (Windows metadata)
 *:Zone.Identifier

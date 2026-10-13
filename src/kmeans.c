@@ -11,6 +11,122 @@
 #include <string.h>
 #include <math.h>
 
+/* ========================================================================= */
+/* Baseline Struct-based Sequential K-Means Implementation                   */
+/* ========================================================================= */
+
+static double squared_distance(
+    const double *a,
+    const double *b,
+    size_t dimensions
+) {
+    double distance = 0.0;
+    for (size_t d = 0; d < dimensions; d++) {
+        double diff = a[d] - b[d];
+        distance += diff * diff;
+    }
+    return distance;
+}
+
+static size_t nearest_centroid(
+    const double *point,
+    const Centroids *centroids
+) {
+    size_t best_cluster = 0;
+    double best_distance = squared_distance(
+        point,
+        centroids->centers,
+        centroids->dimensions
+    );
+
+    for (size_t c = 1; c < centroids->k; c++) {
+        double distance = squared_distance(
+            point,
+            centroids->centers + c * centroids->dimensions,
+            centroids->dimensions
+        );
+        if (distance < best_distance) {
+            best_distance = distance;
+            best_cluster = c;
+        }
+    }
+    return best_cluster;
+}
+
+int kmeans_sequential(
+    const Dataset *dataset,
+    Centroids *centroids,
+    const KMeansConfig *config
+) {
+    if (!dataset || !centroids || !config ||
+        !dataset->points || !centroids->centers ||
+        dataset->n_points == 0 ||
+        dataset->dimensions == 0 ||
+        centroids->k == 0 ||
+        centroids->dimensions != dataset->dimensions) {
+        return -1;
+    }
+
+    size_t k = centroids->k;
+    size_t dimensions = dataset->dimensions;
+
+    double *sums = calloc(k * dimensions, sizeof(double));
+    size_t *counts = calloc(k, sizeof(size_t));
+
+    if (!sums || !counts) {
+        free(sums);
+        free(counts);
+        return -1;
+    }
+
+    for (size_t iteration = 0;
+         iteration < config->max_iterations;
+         iteration++) {
+
+        for (size_t i = 0; i < k * dimensions; i++) {
+            sums[i] = 0.0;
+        }
+        for (size_t c = 0; c < k; c++) {
+            counts[c] = 0;
+        }
+
+        for (size_t i = 0; i < dataset->n_points; i++) {
+            const double *point = dataset->points + i * dimensions;
+            size_t cluster = nearest_centroid(point, centroids);
+            counts[cluster]++;
+            for (size_t d = 0; d < dimensions; d++) {
+                sums[cluster * dimensions + d] += point[d];
+            }
+        }
+
+        double max_change = 0.0;
+        for (size_t c = 0; c < k; c++) {
+            if (counts[c] == 0) continue;
+            for (size_t d = 0; d < dimensions; d++) {
+                size_t index = c * dimensions + d;
+                double new_value = sums[index] / (double)counts[c];
+                double change = fabs(new_value - centroids->centers[index]);
+                if (change > max_change) {
+                    max_change = change;
+                }
+                centroids->centers[index] = new_value;
+            }
+        }
+
+        if (max_change <= config->tolerance) {
+            break;
+        }
+    }
+
+    free(sums);
+    free(counts);
+    return 0;
+}
+
+/* ========================================================================= */
+/* Parallel, Sequential-Run, and Adaptive Cut-Off Implementation             */
+/* ========================================================================= */
+
 static size_t g_parallel_threshold = DEFAULT_PARALLEL_THRESHOLD_POINTS;
 
 size_t kmeans_get_parallel_threshold(void) {
@@ -61,7 +177,6 @@ void kmeans_assign_chunk_fn(const Task *task, int tid, void *ctx) {
             assignments[p] = best_c;
         }
 
-        /* Accumulate to thread-local cache-padded accumulator */
         for (size_t dim = 0; dim < d; dim++) {
             my_acc->sums[best_c * d + dim] += pt[dim];
         }
@@ -96,7 +211,6 @@ int kmeans_sequential_run(
         memset(sums, 0, k * d * sizeof(double));
         memset(counts, 0, k * sizeof(size_t));
 
-        /* Point assignment and accumulation in a tight single-thread loop */
         for (size_t p = 0; p < n; p++) {
             const double *pt = &points[p * d];
             int best_c = 0;
@@ -120,7 +234,6 @@ int kmeans_sequential_run(
             counts[best_c]++;
         }
 
-        /* Centroid recalculation and convergence shift check */
         double max_shift = 0.0;
         for (size_t c = 0; c < k; c++) {
             if (counts[c] > 0) {
@@ -232,7 +345,6 @@ int kmeans_parallel_run(
     free(tasks);
     pool_shutdown(pool);
     accumulators_destroy(accs, nthreads);
-
     return iter;
 }
 
@@ -248,12 +360,10 @@ int kmeans_adaptive_run(
     double *out_centroids,
     int *out_assignments
 ) {
-    /* 1. Sequential cut-off: below empirical break-even point, avoid threading overhead */
     if (nthreads <= 1 || n < g_parallel_threshold) {
         return kmeans_sequential_run(points, n, d, k, max_iters, tolerance, out_centroids, out_assignments);
     }
 
-    /* 2. Adaptive Concurrency Scaling: avoid oversaturating threads on small-to-medium sizes */
     int effective_threads = nthreads;
     if (n < 10000 && effective_threads > 2) {
         effective_threads = 2;
