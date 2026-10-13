@@ -4,8 +4,8 @@
  *
  * Compares:
  * 1. Coarse Lock Contention: All threads compete on a global mutex for every point assignment.
- * 2. Lock-Free Thread-Local Accumulation with Sequential Reduction (Person 2 approach).
- * 3. Lock-Free Thread-Local Accumulation with Parallel Cluster-Partitioned Barrier Reduction (Person 3 approach).
+ * 2. Lock-Free Thread-Local Accumulation with Sequential Reduction (Thread-Local approach).
+ * 3. Lock-Free Thread-Local Accumulation with Parallel Cluster-Partitioned Barrier Reduction (Cluster-Partitioned approach).
  */
 
 #define _POSIX_C_SOURCE 200112L

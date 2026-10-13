@@ -1,6 +1,6 @@
 /**
  * @file synchronization.c
- * @brief Implementation of Person 3: Synchronization & Local Accumulation.
+ * @brief Implementation of Phase Barrier Synchronization & Local Accumulation.
  */
 
 #define _POSIX_C_SOURCE 200112L

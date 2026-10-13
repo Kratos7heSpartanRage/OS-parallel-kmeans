@@ -1,6 +1,6 @@
 /**
  * @file test_synchronization.c
- * @brief Unit tests for Person 3: Synchronization & Local Accumulation.
+ * @brief Unit tests for Synchronization & Reduction.
  */
 
 #define _POSIX_C_SOURCE 200112L
@@ -340,7 +340,7 @@ static void test_global_locked_accumulator(void) {
 
 int main(void) {
     printf("====================================================\n");
-    printf(" Running Person 3 Tests: Synchronization & Reduction\n");
+    printf(" Running Unit 3 Tests: Synchronization & Reduction\n");
     printf("====================================================\n");
 
     test_phase_barrier(2, 50);
@@ -350,6 +350,6 @@ int main(void) {
     test_parallel_reduction();
     test_global_locked_accumulator();
 
-    printf("\n>>> ALL PERSON 3 TESTS PASSED SUCCESSFULLY! <<<\n\n");
+    printf("\n>>> ALL SYNCHRONIZATION TESTS PASSED SUCCESSFULLY! <<<\n\n");
     return 0;
 }

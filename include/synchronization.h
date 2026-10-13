@@ -1,6 +1,6 @@
 /**
  * @file synchronization.h
- * @brief Integration contract & API for Person 3: Synchronization & Local Accumulation.
+ * @brief Integration contract & API for Phase Barrier Synchronization & Local Accumulation.
  *
  * Provides:
  * 1. Phase Barrier Synchronization (POSIX pthread_barrier_t with custom fallback).
