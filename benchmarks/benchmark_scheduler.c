@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE 1
 /**
  * @file benchmark_scheduler.c
  * @brief Benchmark suite demonstrating Dynamic Scheduling vs. Stragglers & Chunk Tuning.

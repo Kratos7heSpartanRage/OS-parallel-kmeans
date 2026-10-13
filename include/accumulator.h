@@ -1,6 +1,6 @@
 /**
  * @file accumulator.h
- * @brief Integration contract for Person 2 & Person 3: Thread-local cluster accumulation.
+ * @brief Thread-local cluster accumulation and reduction engine.
  *
  * Designed with cache-line alignment (alignas(64)) to eliminate false sharing
  * between threads during local accumulation.

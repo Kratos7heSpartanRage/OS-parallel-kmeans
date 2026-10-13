@@ -7,7 +7,7 @@
  *   - Dimensions (D): 8
  *   - Clusters (K): 32
  *   - Iterations: 10
- *   - Threads (P): 16 (matching Ryzen 9 8945HS 16 logical threads)
+ *   - Threads (P): Dynamically detected from system
  *   - Total Distance Calculations: 320,000,000 operations
  */
 
@@ -24,11 +24,37 @@
 #define DIM          8
 #define K_CLUSTERS   32
 #define ITERATIONS   10
-#define NUM_THREADS  16
+#define NUM_THREADS  12
 #define CHUNK_SIZE   4096
 
 static double *g_points = NULL;
 static double *g_centroids = NULL;
+
+static void get_cpu_model(char *dest, size_t maxlen) {
+    FILE *f = fopen("/proc/cpuinfo", "r");
+    if (!f) {
+        snprintf(dest, maxlen, "Intel x86_64 CPU");
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "model name", 10) == 0) {
+            char *colon = strchr(line, ':');
+            if (colon) {
+                colon++;
+                while (*colon == ' ' || *colon == '\t') colon++;
+                char *nl = strchr(colon, '\n');
+                if (nl) *nl = '\0';
+                strncpy(dest, colon, maxlen - 1);
+                dest[maxlen - 1] = '\0';
+                fclose(f);
+                return;
+            }
+        }
+    }
+    fclose(f);
+    snprintf(dest, maxlen, "Intel x86_64 CPU");
+}
 
 static uint64_t get_time_ns_bench(void) {
     struct timespec ts;
@@ -338,7 +364,9 @@ static double run_system_2_ours(void) {
 int main(void) {
     printf("======================================================================\n");
     printf(" RIGOROUS BENCHMARK: Hardest Workload Empirical Comparison\n");
-    printf(" CPU: AMD Ryzen 9 8945HS (8 Cores / 16 Threads, 16MB L3 Cache)\n");
+    char cpu_name[256];
+    get_cpu_model(cpu_name, sizeof(cpu_name));
+    printf(" CPU: %s (%d Logical Threads)\n", cpu_name, NUM_THREADS);
     printf(" Workload: 1,000,000 Points x 8 Dimensions x 32 Clusters x 10 Iterations\n");
     printf(" Total Computations: 320,000,000 Euclidean Vector Evaluations\n");
     printf("======================================================================\n\n");

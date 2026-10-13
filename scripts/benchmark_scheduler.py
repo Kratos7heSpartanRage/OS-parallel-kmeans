@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 benchmark_scheduler.py
-Automates chunk size sweep and thread scaling benchmarks for Person 1.
+Automates chunk size sweep and thread scaling benchmarks for the scheduler runtime.
 Logs load imbalance ratios and execution times.
 """
 
