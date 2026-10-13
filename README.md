@@ -6,6 +6,14 @@ Tested and empirically profiled on: **13th Gen Intel(R) Core(TM) i5-13420H (12 L
 
 ---
 
+## Quick Links
+* 📄 **[Operating Systems Syllabus Mapping & Viva Revision Guide (Markdown)](OS_SYLLABUS_MAPPING.md)**
+* 📑 **[Printable PDF Revision Guide](OS_Project_Syllabus_Mapping_and_Viva_Guide.pdf)**
+* 📊 **[Empirical Benchmarks & Experimental Results](#empirical-benchmark-results)**
+* 💻 **[How to Build & Run Tests](#how-to-build--run-tests)**
+
+---
+
 ## Architecture Overview
 
 ```
@@ -71,12 +79,12 @@ Tested and empirically profiled on: **13th Gen Intel(R) Core(TM) i5-13420H (12 L
   2. We apply bitwise cache padding: `padded_size = (size + 63) & ~63`.
   3. Result: Eliminates false sharing with a **5.09x - 6.14x empirical speedup** over unpadded concurrent access.
 
-### 2. The Grain Size Problem & Parallel Overhead Cut-Off Threshold ($N_{	ext{threshold}}$)
+### 2. The Grain Size Problem & Parallel Overhead Cut-Off Threshold ($N_{\text{threshold}}$)
 - **The Algorithmic Dilemma:** Parallel execution is not free. Spawning tasks incurs non-zero operating system overheads:
   $$T_{\text{parallel}}(N, P) = \frac{T_{\text{compute}}(N)}{P} + T_{\text{overhead}}(N, P)$$
   Where $T_{\text{overhead}} = T_{\text{dispatch}} + T_{\text{queue\_locks}} + T_{\text{condvar\_waking}} + T_{\text{reduction}}$.
   On smaller datasets ($N < 5,000$), $T_{\text{compute}}$ is under 0.5 ms, meaning $T_{\text{overhead}} \gg T_{\text{compute}}$, causing naive multi-threading to run **up to 14x slower** (0.07x speedup).
-- **Our OS Solution:** Our `kmeans_adaptive_run()` driver empirically checks $N$ against the break-even threshold ($N \approx 10,000$ points for 4 threads, $N \approx 25,000$ points for 8-12 threads). Below the threshold, it dynamically bypasses multi-threading and routes execution to pure sequential clustering, delivering optimal latency across ALL input sizes without penalty.
+- **Our OS Solution:** Our `kmeans_adaptive_run()` driver empirically checks $N$ against the break-even threshold ($N \approx 5,000$ for 2T, $N \approx 10,000$ points for 4T, $N \approx 25,000$ points for 8-12T). Below the threshold, it dynamically bypasses multi-threading and routes execution to pure sequential clustering, delivering optimal latency across ALL input sizes without penalty.
 
 ### 3. Dynamic Work-Pulling vs Straggler Jitter
 - **The Core Asymmetry:** Under static coarse slicing ($N / P$), if one thread encounters system jitter or runs on an Intel Efficiency-core (E-core), all other threads remain blocked at the barrier.
@@ -90,6 +98,8 @@ Tested and empirically profiled on: **13th Gen Intel(R) Core(TM) i5-13420H (12 L
 
 ## Master OS Syllabus-to-Project Mapping
 
+*(For the comprehensive detailed guide with full viva questions and answers, see [`OS_SYLLABUS_MAPPING.md`](OS_SYLLABUS_MAPPING.md))*
+
 | OS Syllabus Unit | Textbook Topic | Where & How It Is Used in This Project | Source Files |
 |---|---|---|---|
 | **Unit 1: OS Architecture & Hardware** | System Calls vs User Space | Avoiding repeated `clone()`/`pthread_create` kernel traps via a persistent Thread Pool. | [`src/thread_pool.c`](src/thread_pool.c) |
@@ -100,7 +110,7 @@ Tested and empirically profiled on: **13th Gen Intel(R) Core(TM) i5-13420H (12 L
 | **Unit 3: CPU Scheduling** | The Grain Size Problem | Empirical cut-off threshold ($N_{\text{threshold}}$) where thread synchronization costs exceed computation. | [`src/kmeans.c`](src/kmeans.c), [`benchmarks/threshold_benchmark.c`](benchmarks/threshold_benchmark.c) |
 | **Unit 3: Process Synchronization** | Critical Section & Mutexes | Guarding shared queue cursors (`head`, `tail`, `count`) with `pthread_mutex_t`. | [`src/task_queue.c`](src/task_queue.c) |
 | **Unit 3: Process Synchronization** | Producer-Consumer (Bounded Buffer)| Bounded ring buffer with mutex and two condition variables (`not_empty`, `not_full`). | [`src/task_queue.c`](src/task_queue.c) |
-| **Unit 3: Process Synchronization** | Phase Barrier Synchronization | Iteration barrier via `pool_wait_iteration` using condition variable broadcast on `all_done`. | [`src/thread_pool.c`](src/thread_pool.c) |
+| **Unit 3: Process Synchronization** | Phase Barrier Synchronization | Iteration barrier via `pool_wait_iteration` using condition variable broadcast on `all_done`, plus `pthread_barrier_t`. | [`src/thread_pool.c`](src/thread_pool.c), [`src/synchronization.c`](src/synchronization.c) |
 | **Unit 4: Deadlocks** | Deadlock Prevention | Breaking Coffman's "Circular Wait" and "Hold-and-Wait" through strict Single-Lock Hierarchy. | [`src/task_queue.c`](src/task_queue.c), [`src/thread_pool.c`](src/thread_pool.c) |
 | **Unit 5: Memory Management** | Contiguous Allocation & Prefetch | Row-major contiguous array layout `points[p * d + dim]` maximizing spatial locality. | [`src/aligned_memory.c`](src/aligned_memory.c) |
 | **Unit 6: UNIX Case Study** | Virtual File System (`/proc`) | Parsing `/proc/cpuinfo` to detect processor model name and logical core topology dynamically. | [`benchmarks/threshold_benchmark.c`](benchmarks/threshold_benchmark.c) |
@@ -164,26 +174,37 @@ OS-parallel-kmeans/
 │   ├── accumulator.h                     # 64-byte padded accumulator structures & reduction
 │   ├── aligned_memory.h                  # posix_memalign 64-byte memory allocation API
 │   ├── kmeans.h                          # Sequential, Parallel & Adaptive execution drivers
+│   ├── synchronization.h                 # Phase barrier & reduction synchronization API
 │   ├── task_queue.h                      # Power-of-2 bounded circular ring buffer API
 │   └── thread_pool.h                     # Persistent worker thread pool & telemetry API
 ├── src/                                  # Implementation files
 │   ├── accumulator.c                     # Bitwise padding & centroid reduction logic
 │   ├── aligned_memory.c                  # posix_memalign wrapper
 │   ├── kmeans.c                          # Core clustering engine & sequential cut-off
+│   ├── naive_kmeans.c                    # Naive multi-threaded K-Means baseline
+│   ├── static_kmeans.c                   # Static chunk multi-threaded K-Means baseline
+│   ├── synchronization.c                 # Phase barrier synchronization & reduction
 │   ├── task_queue.c                      # Thread-safe ring buffer with mutex + 2 condvars
 │   └── thread_pool.c                     # Worker thread loop & iteration barrier
 ├── tests/                                # Unit test suite
-│   └── test_thread_pool.c                # 5 Unit tests: FIFO wrap, telemetry, edge cases
+│   ├── test_thread_pool.c                # 5 Unit tests: FIFO wrap, telemetry, edge cases
+│   └── test_synchronization.c            # 4 Unit tests: Barrier synchronization & reduction
+├── test_naive.c                          # Naive multi-threaded baseline validation
+├── test_static.c                         # Static chunk multi-threaded baseline validation
 ├── benchmarks/                           # Empirical benchmarks
+│   ├── benchmark.c                       # Baseline sequential vs parallel benchmark
 │   ├── benchmark_scheduler.c             # Dynamic work-pulling vs straggler jitter
+│   ├── benchmark_suite.c                 # Automated multi-workload benchmark suite
 │   ├── false_sharing_benchmark.c         # MESI cache-coherence false sharing validation
 │   ├── hard_comparison_benchmark.c       # 3-Way architectural comparison (320M ops)
+│   ├── synchronization_benchmark.c       # Barrier vs local accumulation benchmark
 │   ├── threshold_benchmark.c             # Parallel overhead break-even cut-off sweep
 │   └── results/                          # Output CSV data files
 │       └── threshold_results.csv         # Empirically measured latency data
 ├── scripts/                              # Helper scripts
 │   └── benchmark_scheduler.py            # Automated benchmark runner script
-├── OS_Project_Syllabus_Mapping_and_Viva_Guide.pdf # Complete syllabus revision PDF
+├── OS_SYLLABUS_MAPPING.md                # Comprehensive OS syllabus mapping & viva guide
+├── OS_Project_Syllabus_Mapping_and_Viva_Guide.pdf # Printable PDF revision guide
 ├── Makefile                              # Build configuration (GCC -O3 -pthread)
 └── README.md                             # Project overview & documentation
 ```
@@ -192,42 +213,54 @@ OS-parallel-kmeans/
 
 ## How to Build & Run Tests
 
-### Run Everything in One Command:
+### 1. Run All Unit Tests:
+```bash
+make test
+```
+This builds and executes all 4 test suites:
+1. **Thread Pool & Dynamic Queue:** `./bin/test_thread_pool.exe` (5 unit tests)
+2. **Phase Barrier & Synchronization:** `./bin/test_synchronization.exe` (4 unit tests)
+3. **Naive Multi-Threaded Baseline:** `./bin/test_naive.exe`
+4. **Static Partitioning Baseline:** `./bin/test_static.exe`
+
+---
+
+### 2. Run Empirical Benchmarks:
+
+* **Parallel Overhead Break-Even Cut-Off Threshold Benchmark:**
+  ```bash
+  make run_threshold
+  ```
+* **Hardware False Sharing & MESI Protocol Benchmark:**
+  ```bash
+  make run_false_sharing
+  ```
+* **Dynamic Work-Pulling vs Straggler Jitter Benchmark:**
+  ```bash
+  make run_scheduler
+  ```
+* **Hard Workload 3-Way Architecture Stress Comparison:**
+  ```bash
+  make run_hard_comparison
+  ```
+* **Synchronization & Barrier Benchmark:**
+  ```bash
+  make benchmark_synchronization && ./bin/benchmark_synchronization.exe
+  ```
+* **Comprehensive Benchmark Suite:**
+  ```bash
+  make benchmark_suite && ./bin/benchmark_suite.exe
+  ```
+
+---
+
+### 3. Run Everything in One Command:
 ```bash
 make run_all
 ```
-
-### Run Individual Test Suites:
-
-1. **Unit Tests (Task Queue & Thread Pool Telemetry):**
-   ```bash
-   make test
-   ```
-2. **Parallel Overhead Break-Even Cut-Off Threshold Benchmark:**
-   ```bash
-   make run_threshold
-   ```
-3. **Hardware False Sharing & MESI Protocol Benchmark:**
-   ```bash
-   make run_false_sharing
-   ```
-4. **Dynamic Work-Pulling vs Straggler Jitter Benchmark:**
-   ```bash
-   make run_scheduler
-   ```
-5. **Hard Workload 3-Way Architecture Stress Comparison:**
-   ```bash
-   make run_hard_comparison
-   ```
 
 ### Clean & Rebuild All:
 ```bash
 make clean
 make build_all
 ```
-
----
-
-## Viva Voce & Presentation Revision Guide
-A comprehensive, professionally formatted revision document mapping every OS syllabus concept to its corresponding code implementation and viva questions is available at:  
-👉 **`OS_Project_Syllabus_Mapping_and_Viva_Guide.pdf`**
